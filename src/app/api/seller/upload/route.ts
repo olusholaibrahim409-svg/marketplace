@@ -4,25 +4,21 @@ import { getSessionUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
 
-if (!supabaseUrl) {
-  throw new Error(
-    "NEXT_PUBLIC_SUPABASE_URL is not defined"
-  );
+  if (!supabaseUrl || !supabaseSecretKey) {
+    throw new Error("Supabase environment variables are not configured.");
+  }
+
+  return createClient(supabaseUrl, supabaseSecretKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
-
-if (!supabaseSecretKey) {
-  throw new Error(
-    "SUPABASE_SECRET_KEY is not defined"
-  );
-}
-
-const supabaseAdmin = createClient(
-  supabaseUrl,
-  supabaseSecretKey
-);
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -57,18 +53,14 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
 
-    const files = formData
-      .getAll("files")
-      .filter(
-        (value): value is File =>
-          value instanceof File
-      );
+    const files = formData.getAll("files").filter(
+      (value): value is File => value instanceof File
+    );
 
     if (files.length === 0) {
       return NextResponse.json(
         {
-          message:
-            "Please select at least one image.",
+          message: "Please select at least one image.",
         },
         { status: 400 }
       );
@@ -77,25 +69,17 @@ export async function POST(request: Request) {
     if (files.length > 10) {
       return NextResponse.json(
         {
-          message:
-            "You can upload a maximum of 10 images.",
+          message: "You can upload a maximum of 10 images.",
         },
         { status: 400 }
       );
     }
 
-    const uploadedImages: {
-      url: string;
-      path: string;
-      name: string;
-    }[] = [];
-
     for (const file of files) {
       if (!ALLOWED_TYPES.includes(file.type)) {
         return NextResponse.json(
           {
-            message:
-              "Only JPG, PNG, WEBP and GIF images are allowed.",
+            message: "Only JPG, PNG, WEBP and GIF images are allowed.",
           },
           { status: 400 }
         );
@@ -109,58 +93,47 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+    }
 
+    // Initialize Supabase only when an authenticated seller uploads images.
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const uploadedImages: {
+      url: string;
+      path: string;
+      name: string;
+    }[] = [];
+
+    for (const file of files) {
       const extension =
-        file.name
-          .split(".")
-          .pop()
-          ?.toLowerCase() || "jpg";
+        file.name.split(".").pop()?.toLowerCase() || "jpg";
 
       const safeExtension =
-        extension === "jpeg"
-          ? "jpg"
-          : extension;
+        extension === "jpeg" ? "jpg" : extension;
 
-      const uniqueName =
-        `${crypto.randomUUID()}.${safeExtension}`;
+      const uniqueName = `${crypto.randomUUID()}.${safeExtension}`;
+      const filePath = `${user.userId}/${uniqueName}`;
+      const arrayBuffer = await file.arrayBuffer();
 
-      const filePath =
-        `${user.userId}/${uniqueName}`;
-
-      const arrayBuffer =
-        await file.arrayBuffer();
-
-      const { error: uploadError } =
-        await supabaseAdmin.storage
-          .from("product-images")
-          .upload(
-            filePath,
-            arrayBuffer,
-            {
-              contentType: file.type,
-              upsert: false,
-            }
-          );
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("product-images")
+        .upload(filePath, arrayBuffer, {
+          contentType: file.type,
+          upsert: false,
+        });
 
       if (uploadError) {
-        console.error(
-          "SUPABASE IMAGE UPLOAD ERROR:",
-          uploadError
-        );
+        console.error("SUPABASE IMAGE UPLOAD ERROR:", uploadError);
 
         return NextResponse.json(
           {
-            message:
-              uploadError.message ||
-              "Unable to upload image.",
+            message: "Unable to upload image. Please try again.",
           },
           { status: 500 }
         );
       }
 
-      const {
-        data: publicUrlData,
-      } = supabaseAdmin.storage
+      const { data: publicUrlData } = supabaseAdmin.storage
         .from("product-images")
         .getPublicUrl(filePath);
 
@@ -172,22 +145,15 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      message:
-        "Images uploaded successfully.",
+      message: "Images uploaded successfully.",
       images: uploadedImages,
     });
   } catch (error) {
-    console.error(
-      "SELLER IMAGE UPLOAD ERROR:",
-      error
-    );
+    console.error("SELLER IMAGE UPLOAD ERROR:", error);
 
     return NextResponse.json(
       {
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to upload images.",
+        message: "Unable to upload images.",
       },
       { status: 500 }
     );

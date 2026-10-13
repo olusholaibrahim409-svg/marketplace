@@ -1,19 +1,24 @@
-
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+export const runtime = "nodejs";
 
-if (!supabaseUrl || !supabaseSecretKey) {
-  throw new Error("Supabase environment variables are not configured.");
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+
+  if (!supabaseUrl || !supabaseSecretKey) {
+    throw new Error("Supabase environment variables are not configured.");
+  }
+
+  return createClient(supabaseUrl, supabaseSecretKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
-
-const supabaseAdmin = createClient(
-  supabaseUrl,
-  supabaseSecretKey
-);
 
 const PROFILE_BUCKET = "avatars";
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -34,18 +39,9 @@ export async function PATCH(request: Request) {
 
     const formData = await request.formData();
 
-    const firstName = String(
-      formData.get("firstName") || ""
-    ).trim();
-
-    const lastName = String(
-      formData.get("lastName") || ""
-    ).trim();
-
-    const phone = String(
-      formData.get("phone") || ""
-    ).trim();
-
+    const firstName = String(formData.get("firstName") || "").trim();
+    const lastName = String(formData.get("lastName") || "").trim();
+    const phone = String(formData.get("phone") || "").trim();
     const image = formData.get("image");
 
     if (!firstName || !lastName) {
@@ -60,9 +56,6 @@ export async function PATCH(request: Request) {
 
     let imageUrl: string | undefined;
 
-    /*
-     * Handle profile image upload
-     */
     if (image instanceof File && image.size > 0) {
       if (image.size > MAX_FILE_SIZE) {
         return Response.json(
@@ -85,21 +78,29 @@ export async function PATCH(request: Request) {
         return Response.json(
           {
             success: false,
-            message:
-              "Please upload a JPG, PNG, WEBP, or GIF image.",
+            message: "Please upload a JPG, PNG, WEBP, or GIF image.",
           },
           { status: 400 }
         );
       }
 
-      /*
-       * Make sure the bucket exists.
-       *
-       * The bucket is created as public so the profile image
-       * can be displayed normally on the customer account.
-       */
-      const { data: existingBuckets } =
+      // Create the Supabase client only when an image upload is needed.
+      const supabaseAdmin = getSupabaseAdmin();
+
+      const { data: existingBuckets, error: listBucketsError } =
         await supabaseAdmin.storage.listBuckets();
+
+      if (listBucketsError) {
+        console.error("PROFILE BUCKET LIST ERROR:", listBucketsError);
+
+        return Response.json(
+          {
+            success: false,
+            message: "Unable to access profile image storage.",
+          },
+          { status: 500 }
+        );
+      }
 
       const bucketExists = existingBuckets?.some(
         (bucket) => bucket.name === PROFILE_BUCKET
@@ -107,31 +108,22 @@ export async function PATCH(request: Request) {
 
       if (!bucketExists) {
         const { error: bucketError } =
-          await supabaseAdmin.storage.createBucket(
-            PROFILE_BUCKET,
-            {
-              public: true,
-              fileSizeLimit: MAX_FILE_SIZE,
-              allowedMimeTypes: allowedTypes,
-            }
-          );
+          await supabaseAdmin.storage.createBucket(PROFILE_BUCKET, {
+            public: true,
+            fileSizeLimit: MAX_FILE_SIZE,
+            allowedMimeTypes: allowedTypes,
+          });
 
         if (
           bucketError &&
-          !bucketError.message
-            .toLowerCase()
-            .includes("already exists")
+          !bucketError.message.toLowerCase().includes("already exists")
         ) {
-          console.error(
-            "PROFILE BUCKET ERROR:",
-            bucketError
-          );
+          console.error("PROFILE BUCKET ERROR:", bucketError);
 
           return Response.json(
             {
               success: false,
-              message:
-                "Unable to prepare profile image storage.",
+              message: "Unable to prepare profile image storage.",
             },
             { status: 500 }
           );
@@ -148,22 +140,17 @@ export async function PATCH(request: Request) {
               : "jpg";
 
       const filePath = `profiles/${session.userId}-${Date.now()}.${extension}`;
-
       const arrayBuffer = await image.arrayBuffer();
 
-      const { error: uploadError } =
-        await supabaseAdmin.storage
-          .from(PROFILE_BUCKET)
-          .upload(filePath, arrayBuffer, {
-            contentType: image.type,
-            upsert: true,
-          });
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from(PROFILE_BUCKET)
+        .upload(filePath, arrayBuffer, {
+          contentType: image.type,
+          upsert: true,
+        });
 
       if (uploadError) {
-        console.error(
-          "PROFILE IMAGE UPLOAD ERROR:",
-          uploadError
-        );
+        console.error("PROFILE IMAGE UPLOAD ERROR:", uploadError);
 
         return Response.json(
           {
@@ -174,10 +161,9 @@ export async function PATCH(request: Request) {
         );
       }
 
-      const { data: publicUrlData } =
-        supabaseAdmin.storage
-          .from(PROFILE_BUCKET)
-          .getPublicUrl(filePath);
+      const { data: publicUrlData } = supabaseAdmin.storage
+        .from(PROFILE_BUCKET)
+        .getPublicUrl(filePath);
 
       imageUrl = publicUrlData.publicUrl;
     }
@@ -190,9 +176,7 @@ export async function PATCH(request: Request) {
         firstName,
         lastName,
         phone: phone || null,
-        ...(imageUrl !== undefined
-          ? { imageUrl }
-          : {}),
+        ...(imageUrl !== undefined ? { imageUrl } : {}),
       },
       select: {
         id: true,
