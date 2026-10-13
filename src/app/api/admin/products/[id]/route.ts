@@ -67,17 +67,14 @@ export async function PATCH(
     ) {
       return NextResponse.json(
         {
-          message:
-            "Action must be approve or reject.",
+          message: "Action must be approve or reject.",
         },
         { status: 400 }
       );
     }
 
     const product = await prisma.product.findUnique({
-      where: {
-        id,
-      },
+      where: { id },
       select: {
         id: true,
         name: true,
@@ -103,33 +100,28 @@ export async function PATCH(
     }
 
     const newStatus =
-      action === "approve"
-        ? "APPROVED"
-        : "REJECTED";
+      action === "approve" ? "APPROVED" : "REJECTED";
 
-    const updatedProduct =
-      await prisma.product.update({
-        where: {
-          id,
-        },
-        data: {
-          status: newStatus,
-        },
-        include: {
-          seller: {
-            select: {
-              id: true,
-              storeName: true,
-            },
-          },
-          category: {
-            select: {
-              id: true,
-              name: true,
-            },
+    const updatedProduct = await prisma.product.update({
+      where: { id },
+      data: {
+        status: newStatus,
+      },
+      include: {
+        Seller: {
+          select: {
+            id: true,
+            storeName: true,
           },
         },
-      });
+        Category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
 
     return NextResponse.json({
       message:
@@ -139,10 +131,7 @@ export async function PATCH(
       product: updatedProduct,
     });
   } catch (error) {
-    console.error(
-      "ADMIN PRODUCT STATUS ERROR:",
-      error
-    );
+    console.error("ADMIN PRODUCT STATUS ERROR:", error);
 
     return NextResponse.json(
       {

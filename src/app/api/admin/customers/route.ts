@@ -45,12 +45,10 @@ export async function GET() {
     });
 
     const formattedCustomers = customers.map((customer) => {
-      const orders = customer.Order || [];
+      const orders = customer.Order ?? [];
 
       const totalSpent = orders.reduce(
-        (sum, order) => {
-          return sum + Number(order.total);
-        },
+        (sum, order) => sum + Number(order.total),
         0
       );
 
@@ -60,18 +58,18 @@ export async function GET() {
 
       return {
         id: customer.id,
-        name: customer.name,
+        name: [customer.firstName, customer.lastName]
+          .filter(Boolean)
+          .join(" "),
+        firstName: customer.firstName,
+        lastName: customer.lastName,
         email: customer.email,
         phone: customer.phone,
         imageUrl: customer.imageUrl,
         createdAt: customer.createdAt,
-
         orderCount: orders.length,
-
         completedOrders,
-
         totalSpent,
-
         orders: orders.map((order) => ({
           id: order.id,
           orderNumber: order.orderNumber,
@@ -89,15 +87,12 @@ export async function GET() {
     ).length;
 
     const totalRevenue = formattedCustomers.reduce(
-      (sum, customer) => {
-        return sum + customer.totalSpent;
-      },
+      (sum, customer) => sum + customer.totalSpent,
       0
     );
 
     return NextResponse.json({
       customers: formattedCustomers,
-
       summary: {
         totalCustomers,
         customersWithOrders,

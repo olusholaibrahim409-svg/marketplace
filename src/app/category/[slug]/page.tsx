@@ -42,7 +42,7 @@ export default async function CategoryPage({
       slug: true,
       price: true,
       compareAtPrice: true,
-      images: {
+      ProductImage: {
         take: 1,
         orderBy: {
           createdAt: "asc",
@@ -51,7 +51,7 @@ export default async function CategoryPage({
           url: true,
         },
       },
-      seller: {
+      Seller: {
         select: {
           storeName: true,
           slug: true,
@@ -66,12 +66,13 @@ export default async function CategoryPage({
   const formattedProducts = products.map((product) => {
     const price = Number(product.price);
 
-    const compareAtPrice = product.compareAtPrice
-      ? Number(product.compareAtPrice)
-      : null;
+    const compareAtPrice =
+      product.compareAtPrice !== null
+        ? Number(product.compareAtPrice)
+        : null;
 
     const discount =
-      compareAtPrice && compareAtPrice > price
+      compareAtPrice !== null && compareAtPrice > price
         ? Math.round(
             ((compareAtPrice - price) / compareAtPrice) * 100
           )
@@ -98,17 +99,11 @@ export default async function CategoryPage({
           </Link>
 
           <div className="flex items-center gap-5 text-sm font-medium">
-            <Link
-              href="/"
-              className="hover:text-orange-200"
-            >
+            <Link href="/" className="hover:text-orange-200">
               Home
             </Link>
 
-            <Link
-              href="/cart"
-              className="hover:text-orange-200"
-            >
+            <Link href="/cart" className="hover:text-orange-200">
               🛒 Cart
             </Link>
           </div>
@@ -189,9 +184,9 @@ export default async function CategoryPage({
                   href={`/product/${product.slug}`}
                   className="relative block aspect-square overflow-hidden bg-gray-100"
                 >
-                  {product.images[0]?.url ? (
+                  {product.ProductImage[0]?.url ? (
                     <img
-                      src={product.images[0].url}
+                      src={product.ProductImage[0].url}
                       alt={product.name}
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     />
@@ -222,7 +217,7 @@ export default async function CategoryPage({
                       ₦{product.price.toLocaleString()}
                     </span>
 
-                    {product.compareAtPrice &&
+                    {product.compareAtPrice !== null &&
                       product.compareAtPrice > product.price && (
                         <div className="mt-1 flex items-center gap-2">
                           <span className="text-sm text-gray-400 line-through">
@@ -244,10 +239,10 @@ export default async function CategoryPage({
                     </p>
 
                     <Link
-                      href={`/seller/${product.seller.slug}`}
+                      href={`/seller/${product.Seller.slug}`}
                       className="font-semibold text-gray-800 hover:text-orange-600"
                     >
-                      {product.seller.storeName}
+                      {product.Seller.storeName}
                     </Link>
                   </div>
 

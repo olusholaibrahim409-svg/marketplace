@@ -3,6 +3,31 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+type TopSellingProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  price: number;
+  compareAtPrice: number | null;
+  discount: number;
+  savings: number;
+  totalSold: number;
+  images: {
+    id: string;
+    url: string;
+    altText: string | null;
+  }[];
+  seller: {
+    id: string;
+    storeName: string;
+    slug: string;
+    status: string;
+  };
+  category: {
+    name: string;
+  };
+};
+
 function formatPrice(price: number) {
   const naira = String.fromCharCode(0x20a6);
   return `${naira}${price.toLocaleString("en-NG")}`;
@@ -55,7 +80,7 @@ export default async function TopSellingPage() {
     },
   });
 
-  const products = rawProducts.map((product) => {
+  const products: TopSellingProduct[] = rawProducts.map((product) => {
     const totalSold = product.OrderItem.reduce(
       (total, item) => total + item.quantity,
       0
@@ -100,38 +125,53 @@ export default async function TopSellingPage() {
    * If there are no sales yet, we still show approved products
    * so the page does not look broken on a new marketplace.
    */
-  const productsWithSales = products
-    .filter((product) => product.totalSold > 0)
-    .sort((a, b) => {
-      if (b.totalSold !== a.totalSold) {
-        return b.totalSold - a.totalSold;
+  const productsWithSales: TopSellingProduct[] = products
+    .filter((product: TopSellingProduct) => product.totalSold > 0)
+    .sort(
+      (
+        a: TopSellingProduct,
+        b: TopSellingProduct
+      ) => {
+        if (b.totalSold !== a.totalSold) {
+          return b.totalSold - a.totalSold;
+        }
+
+        return b.price - a.price;
       }
+    );
 
-      return b.price - a.price;
-    });
+  const productsWithoutSales: TopSellingProduct[] = products
+    .filter((product: TopSellingProduct) => product.totalSold === 0)
+    .sort(
+      (
+        a: TopSellingProduct,
+        b: TopSellingProduct
+      ) => {
+        return (
+          new Date(b.id).getTime() -
+          new Date(a.id).getTime()
+        );
+      }
+    );
 
-  const productsWithoutSales = products
-    .filter((product) => product.totalSold === 0)
-    .sort((a, b) => {
-      return (
-        new Date(b.id).getTime() -
-        new Date(a.id).getTime()
-      );
-    });
-
-  const topSellingProducts =
+  const topSellingProducts: TopSellingProduct[] =
     productsWithSales.length > 0
       ? productsWithSales
       : productsWithoutSales;
 
   const totalUnitsSold = products.reduce(
-    (total, product) => total + product.totalSold,
+    (
+      total: number,
+      product: TopSellingProduct
+    ) => total + product.totalSold,
     0
   );
 
   const highestDiscount = products.reduce(
-    (highest, product) =>
-      Math.max(highest, product.discount),
+    (
+      highest: number,
+      product: TopSellingProduct
+    ) => Math.max(highest, product.discount),
     0
   );
 
@@ -454,9 +494,7 @@ export default async function TopSellingPage() {
 
           <div className="border-t bg-orange-50 px-5 py-3 md:px-6">
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-orange-600">
-                🔥
-              </span>
+              <span className="text-orange-600">🔥</span>
 
               <span className="font-semibold text-orange-900">
                 {hasRealSales
@@ -527,155 +565,161 @@ export default async function TopSellingPage() {
 
             {/* PRODUCT GRID */}
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {topSellingProducts.map((product, index) => (
-                <article
-                  key={product.id}
-                  className="group overflow-hidden rounded-2xl bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
-                >
-                  {/* IMAGE */}
-                  <Link
-                    href={`/product/${product.slug}`}
-                    className="relative block aspect-square overflow-hidden bg-gray-100"
+              {topSellingProducts.map(
+                (
+                  product: TopSellingProduct,
+                  index: number
+                ) => (
+                  <article
+                    key={product.id}
+                    className="group overflow-hidden rounded-2xl bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
                   >
-                    {product.images[0]?.url ? (
-                      <img
-                        src={product.images[0].url}
-                        alt={
-                          product.images[0].altText ||
-                          product.name
-                        }
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-5xl">
-                        📦
-                      </div>
-                    )}
-
-                    {/* RANK */}
-                    <div className="absolute left-3 top-3">
-                      <span
-                        className={`rounded-full px-3 py-1.5 text-xs font-black text-white shadow-lg ${
-                          index === 0
-                            ? "bg-orange-600"
-                            : "bg-gray-950"
-                        }`}
-                      >
-                        #{index + 1} Top Seller
-                      </span>
-                    </div>
-
-                    {/* DISCOUNT */}
-                    {product.discount > 0 && (
-                      <div className="absolute right-3 top-3">
-                        <span className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-black text-white shadow-lg">
-                          -{product.discount}%
-                        </span>
-                      </div>
-                    )}
-
-                    {/* SOLD */}
-                    {product.totalSold > 0 && (
-                      <div className="absolute bottom-3 left-3">
-                        <span className="rounded-md bg-black/75 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">
-                          🔥 {product.totalSold} sold
-                        </span>
-                      </div>
-                    )}
-                  </Link>
-
-                  {/* INFO */}
-                  <div className="p-5">
-                    {/* CATEGORY */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600">
-                        {product.category.name}
-                      </span>
-
-                      {product.totalSold > 0 && (
-                        <span className="text-xs font-bold text-orange-600">
-                          Popular
-                        </span>
-                      )}
-                    </div>
-
-                    {/* PRODUCT NAME */}
+                    {/* IMAGE */}
                     <Link
                       href={`/product/${product.slug}`}
-                      className="mt-3 block min-h-[48px] line-clamp-2 text-base font-bold leading-6 transition hover:text-orange-600"
+                      className="relative block aspect-square overflow-hidden bg-gray-100"
                     >
-                      {product.name}
+                      {product.images[0]?.url ? (
+                        <img
+                          src={product.images[0].url}
+                          alt={
+                            product.images[0].altText ||
+                            product.name
+                          }
+                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-5xl">
+                          📦
+                        </div>
+                      )}
+
+                      {/* RANK */}
+                      <div className="absolute left-3 top-3">
+                        <span
+                          className={`rounded-full px-3 py-1.5 text-xs font-black text-white shadow-lg ${
+                            index === 0
+                              ? "bg-orange-600"
+                              : "bg-gray-950"
+                          }`}
+                        >
+                          #{index + 1} Top Seller
+                        </span>
+                      </div>
+
+                      {/* DISCOUNT */}
+                      {product.discount > 0 && (
+                        <div className="absolute right-3 top-3">
+                          <span className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-black text-white shadow-lg">
+                            -{product.discount}%
+                          </span>
+                        </div>
+                      )}
+
+                      {/* SOLD */}
+                      {product.totalSold > 0 && (
+                        <div className="absolute bottom-3 left-3">
+                          <span className="rounded-md bg-black/75 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">
+                            🔥 {product.totalSold} sold
+                          </span>
+                        </div>
+                      )}
                     </Link>
 
-                    {/* PRICE */}
-                    <div className="mt-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-2xl font-black text-orange-600">
-                          {formatPrice(product.price)}
+                    {/* INFO */}
+                    <div className="p-5">
+                      {/* CATEGORY */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600">
+                          {product.category.name}
                         </span>
 
-                        {product.discount > 0 && (
-                          <span className="rounded bg-red-50 px-2 py-1 text-xs font-bold text-red-600">
-                            -{product.discount}%
+                        {product.totalSold > 0 && (
+                          <span className="text-xs font-bold text-orange-600">
+                            Popular
                           </span>
                         )}
                       </div>
 
-                      {product.compareAtPrice &&
-                        product.compareAtPrice > product.price && (
-                          <div className="mt-1">
-                            <span className="text-sm text-gray-400 line-through">
-                              {formatPrice(
-                                product.compareAtPrice
-                              )}
+                      {/* PRODUCT NAME */}
+                      <Link
+                        href={`/product/${product.slug}`}
+                        className="mt-3 block min-h-[48px] line-clamp-2 text-base font-bold leading-6 transition hover:text-orange-600"
+                      >
+                        {product.name}
+                      </Link>
+
+                      {/* PRICE */}
+                      <div className="mt-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-2xl font-black text-orange-600">
+                            {formatPrice(product.price)}
+                          </span>
+
+                          {product.discount > 0 && (
+                            <span className="rounded bg-red-50 px-2 py-1 text-xs font-bold text-red-600">
+                              -{product.discount}%
                             </span>
+                          )}
+                        </div>
+
+                        {product.compareAtPrice &&
+                          product.compareAtPrice >
+                            product.price && (
+                            <div className="mt-1">
+                              <span className="text-sm text-gray-400 line-through">
+                                {formatPrice(
+                                  product.compareAtPrice
+                                )}
+                              </span>
+                            </div>
+                          )}
+                      </div>
+
+                      {/* SALES */}
+                      <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50 p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100">
+                            🔥
+                          </span>
+
+                          <div>
+                            <p className="text-xs text-gray-500">
+                              Units sold
+                            </p>
+
+                            <p className="text-sm font-black text-orange-700">
+                              {product.totalSold}
+                            </p>
                           </div>
-                        )}
-                    </div>
-
-                    {/* SALES */}
-                    <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50 p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100">
-                          🔥
-                        </span>
-
-                        <div>
-                          <p className="text-xs text-gray-500">
-                            Units sold
-                          </p>
-
-                          <p className="text-sm font-black text-orange-700">
-                            {product.totalSold}
-                          </p>
                         </div>
                       </div>
-                    </div>
 
-                    {/* SELLER */}
-                    <div className="mt-4 border-t border-gray-100 pt-4">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                        Sold by
-                      </p>
+                      {/* SELLER */}
+                      <div className="mt-4 border-t border-gray-100 pt-4">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                          Sold by
+                        </p>
 
+                        <Link
+                          href={`/seller/${product.seller.slug}`}
+                          className="mt-1 block text-sm font-bold text-gray-800 transition hover:text-orange-600"
+                        >
+                          {product.seller.storeName}
+                        </Link>
+                      </div>
+
+                      {/* BUTTON */}
                       <Link
-                        href={`/seller/${product.seller.slug}`}
-                        className="mt-1 block text-sm font-bold text-gray-800 transition hover:text-orange-600"
+                        href={`/product/${product.slug}`}
+                        className="mt-5 flex w-full items-center justify-center rounded-xl bg-orange-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-700"
                       >
-                        {product.seller.storeName}
+                        Shop Now →
                       </Link>
                     </div>
-
-                    {/* BUTTON */}
-                    <Link
-                      href={`/product/${product.slug}`}
-                      className="mt-5 flex w-full items-center justify-center rounded-xl bg-orange-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-700"
-                    >
-                      Shop Now →
-                    </Link>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                )
+              )}
             </div>
           </>
         )}
@@ -741,9 +785,7 @@ export default async function TopSellingPage() {
 
           {/* CUSTOMER SERVICE */}
           <div>
-            <h3 className="font-bold">
-              Customer Service
-            </h3>
+            <h3 className="font-bold">Customer Service</h3>
 
             <div className="mt-4 space-y-3 text-sm text-gray-400">
               <Link
@@ -778,9 +820,7 @@ export default async function TopSellingPage() {
 
           {/* MARKETPLACE */}
           <div>
-            <h3 className="font-bold">
-              Marketplace
-            </h3>
+            <h3 className="font-bold">Marketplace</h3>
 
             <div className="mt-4 space-y-3 text-sm text-gray-400">
               <Link
@@ -836,9 +876,7 @@ export default async function TopSellingPage() {
 
           {/* SHOP & SELL */}
           <div>
-            <h3 className="font-bold">
-              Shop & Sell
-            </h3>
+            <h3 className="font-bold">Shop & Sell</h3>
 
             <div className="mt-4 space-y-3 text-sm text-gray-400">
               <Link

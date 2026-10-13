@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -48,21 +49,17 @@ export async function GET(
         id: orderId,
         userId: sessionUser.userId,
       },
-
       include: {
-        address: true,
-
-        payment: true,
-
-        items: {
+        Address: true,
+        Payment: true,
+        OrderItem: {
           include: {
-            product: {
+            Product: {
               include: {
-                images: {
+                ProductImage: {
                   orderBy: {
                     sortOrder: "asc",
                   },
-
                   select: {
                     id: true,
                     url: true,
@@ -70,8 +67,7 @@ export async function GET(
                     sortOrder: true,
                   },
                 },
-
-                seller: {
+                Seller: {
                   select: {
                     id: true,
                     storeName: true,
@@ -80,8 +76,7 @@ export async function GET(
                 },
               },
             },
-
-            variant: {
+            ProductVariant: {
               select: {
                 id: true,
                 name: true,
@@ -105,110 +100,76 @@ export async function GET(
 
     const formattedOrder = {
       id: order.id,
-
       orderNumber: order.orderNumber,
-
       status: order.status,
-
       createdAt: order.createdAt,
-
       subtotal: Number(order.subtotal),
-
       shippingFee: Number(order.shippingFee),
-
       discount: Number(order.discount),
-
       total: Number(order.total),
 
       address: {
-        id: order.address.id,
-
-        firstName: order.address.firstName,
-
-        lastName: order.address.lastName,
-
-        phone: order.address.phone,
-
-        addressLine1: order.address.addressLine1,
-
-        addressLine2: order.address.addressLine2,
-
-        city: order.address.city,
-
-        state: order.address.state,
-
-        country: order.address.country,
+        id: order.Address.id,
+        firstName: order.Address.firstName,
+        lastName: order.Address.lastName,
+        phone: order.Address.phone,
+        addressLine1: order.Address.addressLine1,
+        addressLine2: order.Address.addressLine2,
+        city: order.Address.city,
+        state: order.Address.state,
+        country: order.Address.country,
       },
 
-      payment: order.payment
+      payment: order.Payment
         ? {
-            id: order.payment.id,
-
-            reference: order.payment.reference,
-
-            amount: Number(order.payment.amount),
-
-            method: order.payment.method,
-
-            status: order.payment.status,
-
-            provider: order.payment.provider,
-
-            paidAt: order.payment.paidAt,
+            id: order.Payment.id,
+            reference: order.Payment.reference,
+            amount: Number(order.Payment.amount),
+            method: order.Payment.method,
+            status: order.Payment.status,
+            provider: order.Payment.provider,
+            paidAt: order.Payment.paidAt,
           }
         : null,
 
-      items: order.items.map((item) => ({
+      items: order.OrderItem.map((item) => ({
         id: item.id,
-
         quantity: item.quantity,
-
         price: Number(item.unitPrice),
 
         product: {
-          id: item.product.id,
-
-          name: item.product.name,
-
-          slug: item.product.slug,
+          id: item.Product.id,
+          name: item.Product.name,
+          slug: item.Product.slug,
 
           image:
-            item.product.images.length > 0
-              ? item.product.images[0].url
+            item.Product.ProductImage.length > 0
+              ? item.Product.ProductImage[0].url
               : "/placeholder-product.jpg",
 
-          images: item.product.images.map(
+          images: item.Product.ProductImage.map(
             (image) => ({
               id: image.id,
-
               url: image.url,
-
               altText: image.altText,
-
               sortOrder: image.sortOrder,
             })
           ),
 
-          seller: item.product.seller
+          seller: item.Product.Seller
             ? {
-                id: item.product.seller.id,
-
-                storeName:
-                  item.product.seller.storeName,
-
-                status:
-                  item.product.seller.status,
+                id: item.Product.Seller.id,
+                storeName: item.Product.Seller.storeName,
+                status: item.Product.Seller.status,
               }
             : null,
         },
 
-        variant: item.variant
+        variant: item.ProductVariant
           ? {
-              id: item.variant.id,
-
-              name: item.variant.name,
-
-              sku: item.variant.sku,
+              id: item.ProductVariant.id,
+              name: item.ProductVariant.name,
+              sku: item.ProductVariant.sku,
             }
           : null,
       })),
@@ -219,10 +180,7 @@ export async function GET(
       order: formattedOrder,
     });
   } catch (error) {
-    console.error(
-      "GET ORDER DETAILS ERROR:",
-      error
-    );
+    console.error("GET ORDER DETAILS ERROR:", error);
 
     return NextResponse.json(
       {

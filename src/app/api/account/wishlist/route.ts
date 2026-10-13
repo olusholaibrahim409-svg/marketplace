@@ -1,3 +1,5 @@
+
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -8,10 +10,7 @@ export async function GET() {
 
     if (!session) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Unauthorized",
-        },
+        { success: false, message: "Unauthorized" },
         { status: 401 }
       );
     }
@@ -21,22 +20,22 @@ export async function GET() {
         userId: session.userId,
       },
       include: {
-        items: {
+        WishlistItem: {
           orderBy: {
             createdAt: "desc",
           },
           include: {
-            product: {
+            Product: {
               include: {
-                images: {
+                ProductImage: {
                   orderBy: {
                     sortOrder: "asc",
                   },
                   take: 1,
                 },
-                brand: true,
-                category: true,
-                seller: {
+                Brand: true,
+                Category: true,
+                Seller: {
                   select: {
                     storeName: true,
                   },
@@ -58,52 +57,49 @@ export async function GET() {
       });
     }
 
-    const items = wishlist.items.map((item) => ({
+    const items = wishlist.WishlistItem.map((item) => ({
       id: item.id,
       productId: item.productId,
       createdAt: item.createdAt,
 
       product: {
-        id: item.product.id,
-        name: item.product.name,
-        slug: item.product.slug,
-        description: item.product.description,
+        id: item.Product.id,
+        name: item.Product.name,
+        slug: item.Product.slug,
+        description: item.Product.description,
 
-        price: item.product.price.toString(),
+        price: item.Product.price.toString(),
 
         compareAtPrice:
-          item.product.compareAtPrice !== null
-            ? item.product.compareAtPrice.toString()
+          item.Product.compareAtPrice !== null
+            ? item.Product.compareAtPrice.toString()
             : null,
 
-        stockQuantity: item.product.stockQuantity,
+        stockQuantity: item.Product.stockQuantity,
+        status: item.Product.status,
+        isFeatured: item.Product.isFeatured,
+        isFlashSale: item.Product.isFlashSale,
 
-        status: item.product.status,
+        image: item.Product.ProductImage[0]?.url || null,
 
-        isFeatured: item.product.isFeatured,
-
-        isFlashSale: item.product.isFlashSale,
-
-        image:
-          item.product.images[0]?.url || null,
-
-        brand: item.product.brand
+        brand: item.Product.Brand
           ? {
-              id: item.product.brand.id,
-              name: item.product.brand.name,
+              id: item.Product.Brand.id,
+              name: item.Product.Brand.name,
             }
           : null,
 
         category: {
-          id: item.product.category.id,
-          name: item.product.category.name,
-          slug: item.product.category.slug,
+          id: item.Product.Category.id,
+          name: item.Product.Category.name,
+          slug: item.Product.Category.slug,
         },
 
-        seller: {
-          storeName:
-            item.product.seller.storeName,
-        },
+        seller: item.Product.Seller
+          ? {
+              storeName: item.Product.Seller.storeName,
+            }
+          : null,
       },
     }));
 
@@ -115,10 +111,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error(
-      "GET /api/account/wishlist error:",
-      error
-    );
+    console.error("GET /api/account/wishlist error:", error);
 
     return NextResponse.json(
       {
@@ -136,21 +129,17 @@ export async function POST(request: Request) {
 
     if (!session) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Unauthorized",
-        },
+        { success: false, message: "Unauthorized" },
         { status: 401 }
       );
     }
 
     const body = await request.json();
-
     const productId = body?.productId;
 
     if (
-      !productId ||
-      typeof productId !== "string"
+      typeof productId !== "string" ||
+      !productId.trim()
     ) {
       return NextResponse.json(
         {
@@ -161,9 +150,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const normalizedProductId = productId.trim();
+
     const product = await prisma.product.findUnique({
       where: {
-        id: productId,
+        id: normalizedProductId,
+      },
+      select: {
+        id: true,
+        status: true,
       },
     });
 
@@ -181,8 +176,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "This product is not currently available.",
+          message: "This product is not currently available.",
         },
         { status: 400 }
       );
@@ -197,20 +191,20 @@ export async function POST(request: Request) {
     if (!wishlist) {
       wishlist = await prisma.wishlist.create({
         data: {
+          id: randomUUID(),
           userId: session.userId,
         },
       });
     }
 
-    const existingItem =
-      await prisma.wishlistItem.findUnique({
-        where: {
-          wishlistId_productId: {
-            wishlistId: wishlist.id,
-            productId,
-          },
+    const existingItem = await prisma.wishlistItem.findUnique({
+      where: {
+        wishlistId_productId: {
+          wishlistId: wishlist.id,
+          productId: normalizedProductId,
         },
-      });
+      },
+    });
 
     if (existingItem) {
       return NextResponse.json({
@@ -223,8 +217,9 @@ export async function POST(request: Request) {
 
     const item = await prisma.wishlistItem.create({
       data: {
+        id: randomUUID(),
         wishlistId: wishlist.id,
-        productId,
+        productId: normalizedProductId,
       },
     });
 
@@ -237,10 +232,7 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error(
-      "POST /api/account/wishlist error:",
-      error
-    );
+    console.error("POST /api/account/wishlist error:", error);
 
     return NextResponse.json(
       {

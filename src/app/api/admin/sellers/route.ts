@@ -37,7 +37,7 @@ export async function GET() {
     const [sellers, applications] = await Promise.all([
       prisma.seller.findMany({
         include: {
-          user: {
+          User: {
             select: {
               id: true,
               firstName: true,
@@ -49,10 +49,10 @@ export async function GET() {
           },
           _count: {
             select: {
-              products: true,
-              orders: true,
-              commissions: true,
-              payouts: true,
+              Product: true,
+              Order: true,
+              Commission: true,
+              Payout: true,
             },
           },
         },

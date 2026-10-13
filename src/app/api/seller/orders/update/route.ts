@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -10,16 +11,27 @@ const allowedTransitions: Record<string, string[]> = {
   OUT_FOR_DELIVERY: ["DELIVERED"],
 };
 
+const validStatuses = [
+  "PENDING",
+  "CONFIRMED",
+  "PROCESSING",
+  "SHIPPED",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "CANCELLED",
+  "RETURNED",
+  "REFUNDED",
+] as const;
+
+type OrderStatus = (typeof validStatuses)[number];
+
 export async function PATCH(request: Request) {
   try {
     const sessionUser = await getSessionUser();
 
     if (!sessionUser) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Please login first.",
-        },
+        { success: false, message: "Please login first." },
         { status: 401 }
       );
     }
@@ -35,9 +47,7 @@ export async function PATCH(request: Request) {
     }
 
     const seller = await prisma.seller.findUnique({
-      where: {
-        userId: sessionUser.userId,
-      },
+      where: { userId: sessionUser.userId },
       select: {
         id: true,
         status: true,
@@ -46,10 +56,7 @@ export async function PATCH(request: Request) {
 
     if (!seller) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Seller account not found.",
-        },
+        { success: false, message: "Seller account not found." },
         { status: 404 }
       );
     }
@@ -64,13 +71,22 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const body = await request.json();
+    let body: { orderId?: unknown; status?: unknown };
 
-    const orderId = body.orderId;
-    const newStatus = body.status;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, message: "Invalid request body." },
+        { status: 400 }
+      );
+    }
+
+    const { orderId, status: newStatus } = body;
 
     if (
       typeof orderId !== "string" ||
+      !orderId.trim() ||
       typeof newStatus !== "string"
     ) {
       return NextResponse.json(
@@ -82,24 +98,9 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const validStatuses = [
-      "PENDING",
-      "CONFIRMED",
-      "PROCESSING",
-      "SHIPPED",
-      "OUT_FOR_DELIVERY",
-      "DELIVERED",
-      "CANCELLED",
-      "RETURNED",
-      "REFUNDED",
-    ];
-
-    if (!validStatuses.includes(newStatus)) {
+    if (!validStatuses.includes(newStatus as OrderStatus)) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid order status.",
-        },
+        { success: false, message: "Invalid order status." },
         { status: 400 }
       );
     }
@@ -107,16 +108,14 @@ export async function PATCH(request: Request) {
     const order = await prisma.order.findFirst({
       where: {
         id: orderId,
-
-        items: {
+        OrderItem: {
           some: {
-            product: {
+            Product: {
               sellerId: seller.id,
             },
           },
         },
       },
-
       select: {
         id: true,
         status: true,
@@ -127,7 +126,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Order not found or does not belong to your products.",
+          message:
+            "Order not found or does not belong to your products.",
         },
         { status: 404 }
       );
@@ -145,8 +145,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const allowedNextStatuses =
-      allowedTransitions[currentStatus] || [];
+    const allowedNextStatuses = allowedTransitions[currentStatus] || [];
 
     if (!allowedNextStatuses.includes(newStatus)) {
       return NextResponse.json(
@@ -159,23 +158,11 @@ export async function PATCH(request: Request) {
     }
 
     const updatedOrder = await prisma.order.update({
-      where: {
-        id: order.id,
-      },
-
+      where: { id: order.id },
       data: {
-        status: newStatus as
-          | "PENDING"
-          | "CONFIRMED"
-          | "PROCESSING"
-          | "SHIPPED"
-          | "OUT_FOR_DELIVERY"
-          | "DELIVERED"
-          | "CANCELLED"
-          | "RETURNED"
-          | "REFUNDED",
+        status: newStatus as OrderStatus,
+        updatedAt: new Date(),
       },
-
       select: {
         id: true,
         orderNumber: true,

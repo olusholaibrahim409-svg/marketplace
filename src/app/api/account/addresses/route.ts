@@ -1,5 +1,6 @@
 
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
 
@@ -19,12 +20,8 @@ export async function GET() {
         userId: session.userId,
       },
       orderBy: [
-        {
-          isDefault: "desc",
-        },
-        {
-          createdAt: "desc",
-        },
+        { isDefault: "desc" },
+        { createdAt: "desc" },
       ],
     });
 
@@ -38,7 +35,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
-        message: "Failed to load addresses",
+        message: "Failed to load addresses.",
       },
       { status: 500 }
     );
@@ -74,12 +71,18 @@ export async function POST(request: Request) {
     } = body;
 
     if (
-      !firstName?.trim() ||
-      !lastName?.trim() ||
-      !phone?.trim() ||
-      !addressLine1?.trim() ||
-      !city?.trim() ||
-      !state?.trim()
+      typeof firstName !== "string" ||
+      !firstName.trim() ||
+      typeof lastName !== "string" ||
+      !lastName.trim() ||
+      typeof phone !== "string" ||
+      !phone.trim() ||
+      typeof addressLine1 !== "string" ||
+      !addressLine1.trim() ||
+      typeof city !== "string" ||
+      !city.trim() ||
+      typeof state !== "string" ||
+      !state.trim()
     ) {
       return NextResponse.json(
         {
@@ -91,44 +94,73 @@ export async function POST(request: Request) {
       );
     }
 
-    const existingAddressCount = await prisma.address.count({
-      where: {
-        userId: session.userId,
-      },
-    });
+    const allowedAddressTypes = ["HOME", "OFFICE", "OTHER"];
 
-    const shouldBeDefault =
-      existingAddressCount === 0 || Boolean(isDefault);
+    const normalizedAddressType =
+      typeof addressType === "string" &&
+      allowedAddressTypes.includes(addressType)
+        ? addressType
+        : "HOME";
 
-    if (shouldBeDefault) {
-      await prisma.address.updateMany({
+    const now = new Date();
+
+    const address = await prisma.$transaction(async (tx) => {
+      const existingAddressCount = await tx.address.count({
         where: {
           userId: session.userId,
-          isDefault: true,
-        },
-        data: {
-          isDefault: false,
         },
       });
-    }
 
-    const address = await prisma.address.create({
-      data: {
-        userId: session.userId,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone.trim(),
-        addressLine1: addressLine1.trim(),
-        addressLine2: addressLine2?.trim() || null,
-        city: city.trim(),
-        state: state.trim(),
-        country: country?.trim() || "Nigeria",
-        postalCode: postalCode?.trim() || null,
-        addressType: addressType || "HOME",
-        deliveryInstructions:
-          deliveryInstructions?.trim() || null,
-        isDefault: shouldBeDefault,
-      },
+      const shouldBeDefault =
+        existingAddressCount === 0 || isDefault === true;
+
+      if (shouldBeDefault) {
+        await tx.address.updateMany({
+          where: {
+            userId: session.userId,
+            isDefault: true,
+          },
+          data: {
+            isDefault: false,
+          },
+        });
+      }
+
+      return tx.address.create({
+        data: {
+          id: randomUUID(),
+          userId: session.userId,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone.trim(),
+          addressLine1: addressLine1.trim(),
+          addressLine2:
+            typeof addressLine2 === "string"
+              ? addressLine2.trim() || null
+              : null,
+          city: city.trim(),
+          state: state.trim(),
+          country:
+            typeof country === "string" && country.trim()
+              ? country.trim()
+              : "Nigeria",
+          postalCode:
+            typeof postalCode === "string"
+              ? postalCode.trim() || null
+              : null,
+          addressType: normalizedAddressType as
+            | "HOME"
+            | "OFFICE"
+            | "OTHER",
+          deliveryInstructions:
+            typeof deliveryInstructions === "string"
+              ? deliveryInstructions.trim() || null
+              : null,
+          isDefault: shouldBeDefault,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
     });
 
     return NextResponse.json(

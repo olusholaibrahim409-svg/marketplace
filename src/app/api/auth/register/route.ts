@@ -1,3 +1,5 @@
+
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 
@@ -5,13 +7,35 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    const firstName = body.firstName?.trim();
-    const lastName = body.lastName?.trim();
-    const email = body.email?.trim().toLowerCase();
-    const phone = body.phone?.trim();
+    const firstName =
+      typeof body.firstName === "string"
+        ? body.firstName.trim()
+        : "";
+
+    const lastName =
+      typeof body.lastName === "string"
+        ? body.lastName.trim()
+        : "";
+
+    const email =
+      typeof body.email === "string"
+        ? body.email.trim().toLowerCase()
+        : "";
+
+    const phone =
+      typeof body.phone === "string"
+        ? body.phone.trim()
+        : "";
+
     const password = body.password;
 
-    if (!firstName || !lastName || !email || !password) {
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      typeof password !== "string" ||
+      !password
+    ) {
       return Response.json(
         {
           success: false,
@@ -49,9 +73,11 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await hashPassword(password);
+    const now = new Date();
 
     const user = await prisma.user.create({
       data: {
+        id: randomUUID(),
         firstName,
         lastName,
         email,
@@ -59,6 +85,7 @@ export async function POST(request: Request) {
         passwordHash,
         role: "CUSTOMER",
         status: "ACTIVE",
+        updatedAt: now,
       },
       select: {
         id: true,

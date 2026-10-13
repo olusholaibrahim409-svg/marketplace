@@ -1,3 +1,5 @@
+
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
@@ -54,9 +56,7 @@ export async function PATCH(
      */
     if (action === "approve" || action === "reject") {
       const application = await prisma.sellerApplication.findUnique({
-        where: {
-          id,
-        },
+        where: { id },
       });
 
       if (!application) {
@@ -78,14 +78,14 @@ export async function PATCH(
       if (action === "reject") {
         const updatedApplication =
           await prisma.sellerApplication.update({
-            where: {
-              id: application.id,
-            },
+            where: { id: application.id },
             data: {
               status: "REJECTED",
               rejectionReason:
-                body.rejectionReason?.trim() ||
-                "Seller application was not approved.",
+                typeof body.rejectionReason === "string" &&
+                body.rejectionReason.trim()
+                  ? body.rejectionReason.trim()
+                  : "Seller application was not approved.",
               updatedAt: new Date(),
             },
           });
@@ -104,9 +104,7 @@ export async function PATCH(
        */
       const result = await prisma.$transaction(async (tx) => {
         const existingSeller = await tx.seller.findUnique({
-          where: {
-            userId: application.userId,
-          },
+          where: { userId: application.userId },
         });
 
         if (existingSeller) {
@@ -126,9 +124,7 @@ export async function PATCH(
         let slug = baseSlug;
 
         const existingSlug = await tx.seller.findUnique({
-          where: {
-            slug,
-          },
+          where: { slug },
         });
 
         if (existingSlug) {
@@ -137,6 +133,7 @@ export async function PATCH(
 
         const seller = await tx.seller.create({
           data: {
+            id: randomUUID(),
             userId: application.userId,
             storeName: application.storeName,
             slug,
@@ -148,9 +145,7 @@ export async function PATCH(
 
         const updatedApplication =
           await tx.sellerApplication.update({
-            where: {
-              id: application.id,
-            },
+            where: { id: application.id },
             data: {
               status: "APPROVED",
               updatedAt: new Date(),
@@ -158,9 +153,7 @@ export async function PATCH(
           });
 
         await tx.user.update({
-          where: {
-            id: application.userId,
-          },
+          where: { id: application.userId },
           data: {
             role: "SELLER",
           },
@@ -182,10 +175,7 @@ export async function PATCH(
     /*
      * EXISTING SELLER ACTIONS
      */
-    if (
-      action !== "suspend" &&
-      action !== "activate"
-    ) {
+    if (action !== "suspend" && action !== "activate") {
       return NextResponse.json(
         {
           message:
@@ -196,9 +186,7 @@ export async function PATCH(
     }
 
     const seller = await prisma.seller.findUnique({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     if (!seller) {
@@ -208,18 +196,11 @@ export async function PATCH(
       );
     }
 
-    let status: "SUSPENDED" | "APPROVED";
-
-    if (action === "suspend") {
-      status = "SUSPENDED";
-    } else {
-      status = "APPROVED";
-    }
+    const status: "SUSPENDED" | "APPROVED" =
+      action === "suspend" ? "SUSPENDED" : "APPROVED";
 
     const updatedSeller = await prisma.seller.update({
-      where: {
-        id: seller.id,
-      },
+      where: { id: seller.id },
       data: {
         status,
         approvedAt:

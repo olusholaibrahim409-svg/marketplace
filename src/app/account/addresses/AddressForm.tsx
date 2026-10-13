@@ -46,7 +46,7 @@ export default function AddressForm({
   onSuccess,
   onCancel,
 }: AddressFormProps) {
-  const isEditing = Boolean(address);
+  const isEditing = Boolean(address?.id);
 
   const [formData, setFormData] =
     useState<AddressFormData>(emptyForm);
@@ -97,22 +97,27 @@ export default function AddressForm({
   ) {
     event.preventDefault();
 
+    if (isEditing && !address?.id) {
+      setError("The address could not be identified. Please close the form and try again.");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
-      const response = await fetch(
-        isEditing
+      const url =
+        isEditing && address?.id
           ? `/api/account/addresses/${address.id}`
-          : "/api/account/addresses",
-        {
-          method: isEditing ? "PATCH" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
-        }
-      );
+          : "/api/account/addresses";
+
+      const response = await fetch(url, {
+        method: isEditing ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
 
       const data = await response.json();
 
@@ -147,9 +152,7 @@ export default function AddressForm({
             </p>
 
             <h2 className="text-xl font-bold text-slate-900">
-              {isEditing
-                ? "Edit Address"
-                : "Add New Address"}
+              {isEditing ? "Edit Address" : "Add New Address"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -170,10 +173,7 @@ export default function AddressForm({
         </div>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="p-6"
-      >
+      <form onSubmit={handleSubmit} className="p-6">
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -181,13 +181,11 @@ export default function AddressForm({
         )}
 
         <div className="space-y-8">
-          {/* Contact Information */}
           <section>
             <div className="mb-4">
               <h3 className="font-semibold text-slate-900">
                 Contact Information
               </h3>
-
               <p className="mt-1 text-sm text-slate-500">
                 Who should receive this delivery?
               </p>
@@ -226,13 +224,11 @@ export default function AddressForm({
             </div>
           </section>
 
-          {/* Delivery Address */}
           <section>
             <div className="mb-4">
               <h3 className="font-semibold text-slate-900">
                 Delivery Address
               </h3>
-
               <p className="mt-1 text-sm text-slate-500">
                 Where should your order be delivered?
               </p>
@@ -307,13 +303,11 @@ export default function AddressForm({
             </div>
           </section>
 
-          {/* Preferences */}
           <section>
             <div className="mb-4">
               <h3 className="font-semibold text-slate-900">
                 Address Preferences
               </h3>
-
               <p className="mt-1 text-sm text-slate-500">
                 Help us organize your saved addresses.
               </p>
@@ -335,17 +329,9 @@ export default function AddressForm({
                   onChange={handleChange}
                   className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                 >
-                  <option value="HOME">
-                    Home
-                  </option>
-
-                  <option value="OFFICE">
-                    Office
-                  </option>
-
-                  <option value="OTHER">
-                    Other
-                  </option>
+                  <option value="HOME">Home</option>
+                  <option value="OFFICE">Office</option>
+                  <option value="OTHER">Other</option>
                 </select>
               </div>
 
@@ -362,7 +348,6 @@ export default function AddressForm({
                   <span className="block text-sm font-medium text-slate-800">
                     Set as default address
                   </span>
-
                   <span className="block text-xs text-slate-500">
                     Use this address automatically during checkout.
                   </span>
@@ -371,13 +356,11 @@ export default function AddressForm({
             </div>
           </section>
 
-          {/* Instructions */}
           <section>
             <div className="mb-4">
               <h3 className="font-semibold text-slate-900">
                 Delivery Instructions
               </h3>
-
               <p className="mt-1 text-sm text-slate-500">
                 Add helpful information for the delivery agent.
               </p>
@@ -395,7 +378,6 @@ export default function AddressForm({
           </section>
         </div>
 
-        {/* Actions */}
         <div className="mt-8 flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-end">
           <button
             type="button"

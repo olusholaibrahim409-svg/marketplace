@@ -1,4 +1,6 @@
+
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
 import { createClient } from "@supabase/supabase-js";
@@ -17,16 +19,12 @@ function getSupabaseAdmin() {
     throw new Error("Supabase server configuration is missing.");
   }
 
-  return createClient(
-    supabaseUrl,
-    supabaseSecretKey,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  );
+  return createClient(supabaseUrl, supabaseSecretKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
 /*
@@ -41,10 +39,7 @@ export async function GET(
 
     if (!sessionUser) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Please login first.",
-        },
+        { success: false, message: "Please login first." },
         { status: 401 }
       );
     }
@@ -57,8 +52,7 @@ export async function GET(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "You are not authorized to view this product.",
+          message: "You are not authorized to view this product.",
         },
         { status: 403 }
       );
@@ -68,10 +62,7 @@ export async function GET(
 
     if (!id) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Product ID is required.",
-        },
+        { success: false, message: "Product ID is required." },
         { status: 400 }
       );
     }
@@ -80,21 +71,13 @@ export async function GET(
 
     if (sessionUser.role === "SELLER") {
       const seller = await prisma.seller.findUnique({
-        where: {
-          userId: sessionUser.userId,
-        },
-
-        select: {
-          id: true,
-        },
+        where: { userId: sessionUser.userId },
+        select: { id: true },
       });
 
       if (!seller) {
         return NextResponse.json(
-          {
-            success: false,
-            message: "Seller account not found.",
-          },
+          { success: false, message: "Seller account not found." },
           { status: 404 }
         );
       }
@@ -102,88 +85,56 @@ export async function GET(
       sellerId = seller.id;
     }
 
-    const [product, categories, brands] =
-      await Promise.all([
-        prisma.product.findUnique({
-          where: {
-            id,
+    const [product, categories, brands] = await Promise.all([
+      prisma.product.findUnique({
+        where: { id },
+        include: {
+          Category: {
+            select: { id: true, name: true },
           },
-
-          include: {
-            Category: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-
-            Brand: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-
-            ProductImage: {
-              orderBy: {
-                sortOrder: "asc",
-              },
-
-              select: {
-                id: true,
-                url: true,
-                altText: true,
-                sortOrder: true,
-              },
-            },
-
-            Seller: {
-              select: {
-                id: true,
-                storeName: true,
-                slug: true,
-                status: true,
-              },
-            },
-
-            Inventory: {
-              select: {
-                quantity: true,
-                reserved: true,
-              },
+          Brand: {
+            select: { id: true, name: true },
+          },
+          ProductImage: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              url: true,
+              altText: true,
+              sortOrder: true,
             },
           },
-        }),
-
-        prisma.category.findMany({
-          orderBy: {
-            name: "asc",
+          Seller: {
+            select: {
+              id: true,
+              storeName: true,
+              slug: true,
+              status: true,
+            },
           },
-
-          select: {
-            id: true,
-            name: true,
+          Inventory: {
+            select: {
+              quantity: true,
+              reserved: true,
+            },
           },
-        }),
+        },
+      }),
 
-        prisma.brand.findMany({
-          orderBy: {
-            name: "asc",
-          },
+      prisma.category.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
 
-          select: {
-            id: true,
-            name: true,
-          },
-        }),
-      ]);
+      prisma.brand.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+    ]);
 
     if (!product) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Product not found.",
-        },
+        { success: false, message: "Product not found." },
         { status: 404 }
       );
     }
@@ -195,89 +146,52 @@ export async function GET(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "You are not authorized to view this product.",
+          message: "You are not authorized to view this product.",
         },
         { status: 403 }
       );
     }
 
-    /*
-     * LOAD FLASH SALE
-     */
     let flashSaleProduct = null;
 
     if (product.isFlashSale) {
-      flashSaleProduct =
-        await prisma.flashSaleProduct.findFirst({
-          where: {
-            productId: product.id,
+      flashSaleProduct = await prisma.flashSaleProduct.findFirst({
+        where: {
+          productId: product.id,
+          FlashSale: { isActive: true },
+        },
+        include: { FlashSale: true },
+      });
 
-            FlashSale: {
-              isActive: true,
-            },
-          },
-
-          include: {
-            FlashSale: true,
-          },
-        });
-
-      /*
-       * If there is no currently active Flash Sale,
-       * load the latest configured Flash Sale.
-       */
       if (!flashSaleProduct) {
-        flashSaleProduct =
-          await prisma.flashSaleProduct.findFirst({
-            where: {
-              productId: product.id,
-            },
-
-            orderBy: {
-              FlashSale: {
-                startsAt: "desc",
-              },
-            },
-
-            include: {
-              FlashSale: true,
-            },
-          });
+        flashSaleProduct = await prisma.flashSaleProduct.findFirst({
+          where: { productId: product.id },
+          orderBy: {
+            FlashSale: { startsAt: "desc" },
+          },
+          include: { FlashSale: true },
+        });
       }
     }
 
     return NextResponse.json({
       success: true,
-
       categories,
-
       brands,
-
       product: {
         id: product.id,
-
         name: product.name,
-
         slug: product.slug,
-
         description: product.description,
-
         sku: product.sku,
-
         price: Number(product.price),
-
         compareAtPrice:
           product.compareAtPrice !== null
             ? Number(product.compareAtPrice)
             : null,
-
         stockQuantity: product.stockQuantity,
-
         status: product.status,
-
         isFeatured: product.isFeatured,
-
         isFlashSale: product.isFlashSale,
 
         category: product.Category
@@ -298,77 +212,42 @@ export async function GET(
 
         inventory: product.Inventory
           ? {
-              quantity:
-                product.Inventory.quantity,
-
-              reserved:
-                product.Inventory.reserved,
+              quantity: product.Inventory.quantity,
+              reserved: product.Inventory.reserved,
             }
           : null,
 
         seller: product.Seller
           ? {
               id: product.Seller.id,
-
-              storeName:
-                product.Seller.storeName,
-
+              storeName: product.Seller.storeName,
               slug: product.Seller.slug,
-
-              status:
-                product.Seller.status,
+              status: product.Seller.status,
             }
           : null,
 
         flashSale: flashSaleProduct
           ? {
               id: flashSaleProduct.id,
-
-              salePrice: Number(
-                flashSaleProduct.salePrice
-              ),
-
-              stockLimit:
-                flashSaleProduct.stockLimit,
-
-              soldQuantity:
-                flashSaleProduct.soldQuantity,
-
-              flashSaleId:
-                flashSaleProduct.FlashSale.id,
-
-              name:
-                flashSaleProduct.FlashSale.name,
-
-              description:
-                flashSaleProduct.FlashSale
-                  .description,
-
-              startsAt:
-                flashSaleProduct.FlashSale
-                  .startsAt,
-
-              endsAt:
-                flashSaleProduct.FlashSale
-                  .endsAt,
-
-              isActive:
-                flashSaleProduct.FlashSale
-                  .isActive,
+              salePrice: Number(flashSaleProduct.salePrice),
+              stockLimit: flashSaleProduct.stockLimit,
+              soldQuantity: flashSaleProduct.soldQuantity,
+              flashSaleId: flashSaleProduct.FlashSale.id,
+              name: flashSaleProduct.FlashSale.name,
+              description: flashSaleProduct.FlashSale.description,
+              startsAt: flashSaleProduct.FlashSale.startsAt,
+              endsAt: flashSaleProduct.FlashSale.endsAt,
+              isActive: flashSaleProduct.FlashSale.isActive,
             }
           : null,
       },
     });
   } catch (error) {
-    console.error(
-      "SELLER PRODUCT GET ERROR:",
-      error
-    );
+    console.error("SELLER PRODUCT GET ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-
         message:
           error instanceof Error
             ? error.message
@@ -391,29 +270,20 @@ export async function PUT(
 
     if (!sessionUser) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Please login first.",
-        },
+        { success: false, message: "Please login first." },
         { status: 401 }
       );
     }
 
     if (sessionUser.role !== "SELLER") {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Only sellers can edit products.",
-        },
+        { success: false, message: "Only sellers can edit products." },
         { status: 403 }
       );
     }
 
     const seller = await prisma.seller.findUnique({
-      where: {
-        userId: sessionUser.userId,
-      },
-
+      where: { userId: sessionUser.userId },
       select: {
         id: true,
         status: true,
@@ -422,10 +292,7 @@ export async function PUT(
 
     if (!seller) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Seller account not found.",
-        },
+        { success: false, message: "Seller account not found." },
         { status: 404 }
       );
     }
@@ -434,8 +301,7 @@ export async function PUT(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Your seller account is not approved.",
+          message: "Your seller account is not approved.",
         },
         { status: 403 }
       );
@@ -445,31 +311,19 @@ export async function PUT(
 
     if (!id) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Product ID is required.",
-        },
+        { success: false, message: "Product ID is required." },
         { status: 400 }
       );
     }
 
-    const existingProduct =
-      await prisma.product.findUnique({
-        where: {
-          id,
-        },
-
-        include: {
-          Inventory: true,
-        },
-      });
+    const existingProduct = await prisma.product.findUnique({
+      where: { id },
+      include: { Inventory: true },
+    });
 
     if (!existingProduct) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Product not found.",
-        },
+        { success: false, message: "Product not found." },
         { status: 404 }
       );
     }
@@ -478,8 +332,7 @@ export async function PUT(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "You are not authorized to edit this product.",
+          message: "You are not authorized to edit this product.",
         },
         { status: 403 }
       );
@@ -487,14 +340,8 @@ export async function PUT(
 
     const body = await request.json();
 
-    /*
-     * BASIC PRODUCT FIELDS
-     */
-
     const name =
-      typeof body.name === "string"
-        ? body.name.trim()
-        : "";
+      typeof body.name === "string" ? body.name.trim() : "";
 
     const categoryId =
       typeof body.categoryId === "string"
@@ -502,8 +349,7 @@ export async function PUT(
         : "";
 
     const brandId =
-      typeof body.brandId === "string" &&
-      body.brandId.trim()
+      typeof body.brandId === "string" && body.brandId.trim()
         ? body.brandId.trim()
         : null;
 
@@ -513,8 +359,7 @@ export async function PUT(
         : "";
 
     const sku =
-      typeof body.sku === "string" &&
-      body.sku.trim()
+      typeof body.sku === "string" && body.sku.trim()
         ? body.sku.trim()
         : null;
 
@@ -527,18 +372,9 @@ export async function PUT(
         ? Number(body.compareAtPrice)
         : null;
 
-    const stockQuantity =
-      Number(body.stockQuantity);
-
-    const isFeatured =
-      body.isFeatured === true;
-
-    /*
-     * FLASH SALE
-     */
-
-    const requestedFlashSale =
-      body.isFlashSale === true;
+    const stockQuantity = Number(body.stockQuantity);
+    const isFeatured = body.isFeatured === true;
+    const requestedFlashSale = body.isFlashSale === true;
 
     const flashSalePrice =
       body.flashSalePrice !== "" &&
@@ -566,175 +402,106 @@ export async function PUT(
         ? Number(body.flashSaleStockLimit)
         : null;
 
-    /*
-     * NORMAL VALIDATION
-     */
-
     if (!name) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Product name is required.",
-        },
+        { success: false, message: "Product name is required." },
         { status: 400 }
       );
     }
 
     if (!categoryId) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Category is required.",
-        },
+        { success: false, message: "Category is required." },
         { status: 400 }
       );
     }
 
     if (!Number.isFinite(price) || price <= 0) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Enter a valid product price.",
-        },
+        { success: false, message: "Enter a valid product price." },
         { status: 400 }
       );
     }
 
     if (
       compareAtPrice !== null &&
-      (!Number.isFinite(compareAtPrice) ||
-        compareAtPrice <= 0)
+      (!Number.isFinite(compareAtPrice) || compareAtPrice <= 0)
     ) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Enter a valid compare-at price.",
+          message: "Enter a valid compare-at price.",
         },
         { status: 400 }
       );
     }
 
-    if (
-      !Number.isInteger(stockQuantity) ||
-      stockQuantity < 0
-    ) {
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Enter a valid stock quantity.",
+          message: "Enter a valid stock quantity.",
         },
         { status: 400 }
       );
     }
 
-    /*
-     * CATEGORY
-     */
-
-    const category =
-      await prisma.category.findUnique({
-        where: {
-          id: categoryId,
-        },
-      });
+    const category = await prisma.category.findUnique({
+      where: { id: categoryId },
+    });
 
     if (!category) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Selected category was not found.",
+          message: "Selected category was not found.",
         },
         { status: 400 }
       );
     }
 
-    /*
-     * BRAND
-     */
-
     if (brandId) {
-      const brand =
-        await prisma.brand.findUnique({
-          where: {
-            id: brandId,
-          },
-        });
+      const brand = await prisma.brand.findUnique({
+        where: { id: brandId },
+      });
 
       if (!brand) {
         return NextResponse.json(
           {
             success: false,
-            message:
-              "Selected brand was not found.",
+            message: "Selected brand was not found.",
           },
           { status: 400 }
         );
       }
     }
 
-    /*
-     * SKU
-     */
-
     if (sku) {
-      const existingSku =
-        await prisma.product.findFirst({
-          where: {
-            sku,
-
-            NOT: {
-              id: existingProduct.id,
-            },
-          },
-        });
+      const existingSku = await prisma.product.findFirst({
+        where: {
+          sku,
+          NOT: { id: existingProduct.id },
+        },
+      });
 
       if (existingSku) {
         return NextResponse.json(
-          {
-            success: false,
-            message:
-              "That SKU is already in use.",
-          },
+          { success: false, message: "That SKU is already in use." },
           { status: 409 }
         );
       }
     }
 
-    /*
-     * EXISTING FLASH SALE
-     */
-
     const existingFlashSaleProduct =
       await prisma.flashSaleProduct.findFirst({
-        where: {
-          productId: existingProduct.id,
-        },
-
-        include: {
-          FlashSale: true,
-        },
+        where: { productId: existingProduct.id },
+        include: { FlashSale: true },
       });
 
-    /*
-     * FINAL FLASH SALE STATE
-     */
+    const isFlashSale = requestedFlashSale;
 
-    const isFlashSale =
-      requestedFlashSale;
-
-    let parsedFlashSaleStart:
-      Date | null = null;
-
-    let parsedFlashSaleEnd:
-      Date | null = null;
-
-    /*
-     * FLASH SALE VALIDATION
-     */
+    let parsedFlashSaleStart: Date | null = null;
+    let parsedFlashSaleEnd: Date | null = null;
 
     if (isFlashSale) {
       if (
@@ -745,11 +512,8 @@ export async function PUT(
         return NextResponse.json(
           {
             success: false,
-            message:
-              "Enter a valid Flash Sale price.",
-
-            field:
-              "flashSalePrice",
+            message: "Enter a valid Flash Sale price.",
+            field: "flashSalePrice",
           },
           { status: 400 }
         );
@@ -761,9 +525,7 @@ export async function PUT(
             success: false,
             message:
               "Flash Sale price must be lower than the normal product price.",
-
-            field:
-              "flashSalePrice",
+            field: "flashSalePrice",
           },
           { status: 400 }
         );
@@ -773,11 +535,8 @@ export async function PUT(
         return NextResponse.json(
           {
             success: false,
-            message:
-              "Flash Sale start date and time are required.",
-
-            field:
-              "flashSaleStart",
+            message: "Flash Sale start date and time are required.",
+            field: "flashSaleStart",
           },
           { status: 400 }
         );
@@ -787,70 +546,45 @@ export async function PUT(
         return NextResponse.json(
           {
             success: false,
-            message:
-              "Flash Sale end date and time are required.",
-
-            field:
-              "flashSaleEnd",
+            message: "Flash Sale end date and time are required.",
+            field: "flashSaleEnd",
           },
           { status: 400 }
         );
       }
 
-      parsedFlashSaleStart =
-        new Date(flashSaleStart);
+      parsedFlashSaleStart = new Date(flashSaleStart);
+      parsedFlashSaleEnd = new Date(flashSaleEnd);
 
-      parsedFlashSaleEnd =
-        new Date(flashSaleEnd);
-
-      if (
-        Number.isNaN(
-          parsedFlashSaleStart.getTime()
-        )
-      ) {
+      if (Number.isNaN(parsedFlashSaleStart.getTime())) {
         return NextResponse.json(
           {
             success: false,
-            message:
-              "Flash Sale start date is invalid.",
-
-            field:
-              "flashSaleStart",
+            message: "Flash Sale start date is invalid.",
+            field: "flashSaleStart",
           },
           { status: 400 }
         );
       }
 
-      if (
-        Number.isNaN(
-          parsedFlashSaleEnd.getTime()
-        )
-      ) {
+      if (Number.isNaN(parsedFlashSaleEnd.getTime())) {
         return NextResponse.json(
           {
             success: false,
-            message:
-              "Flash Sale end date is invalid.",
-
-            field:
-              "flashSaleEnd",
+            message: "Flash Sale end date is invalid.",
+            field: "flashSaleEnd",
           },
           { status: 400 }
         );
       }
 
-      if (
-        parsedFlashSaleEnd <=
-        parsedFlashSaleStart
-      ) {
+      if (parsedFlashSaleEnd <= parsedFlashSaleStart) {
         return NextResponse.json(
           {
             success: false,
             message:
               "Flash Sale end time must be after the start time.",
-
-            field:
-              "flashSaleEnd",
+            field: "flashSaleEnd",
           },
           { status: 400 }
         );
@@ -858,460 +592,243 @@ export async function PUT(
 
       if (
         flashSaleStockLimit === null ||
-        !Number.isInteger(
-          flashSaleStockLimit
-        ) ||
+        !Number.isInteger(flashSaleStockLimit) ||
         flashSaleStockLimit <= 0
       ) {
         return NextResponse.json(
           {
             success: false,
-            message:
-              "Enter a valid Flash Sale stock limit.",
-
-            field:
-              "flashSaleStockLimit",
+            message: "Enter a valid Flash Sale stock limit.",
+            field: "flashSaleStockLimit",
           },
           { status: 400 }
         );
       }
 
-      if (
-        flashSaleStockLimit >
-        stockQuantity
-      ) {
+      if (flashSaleStockLimit > stockQuantity) {
         return NextResponse.json(
           {
             success: false,
             message:
               "Flash Sale stock limit cannot be greater than the available product stock.",
-
-            field:
-              "flashSaleStockLimit",
+            field: "flashSaleStockLimit",
           },
           { status: 400 }
         );
       }
     }
 
-    /*
-     * SAVE EVERYTHING
-     */
+    const updatedProduct = await prisma.$transaction(
+      async (transaction) => {
+        const product = await transaction.product.update({
+          where: { id: existingProduct.id },
+          data: {
+            name,
+            categoryId,
+            brandId,
+            description: description || null,
+            sku,
+            price,
+            compareAtPrice,
+            stockQuantity,
+            isFeatured,
+            isFlashSale,
+            updatedAt: new Date(),
+          },
+          include: {
+            Category: {
+              select: { id: true, name: true },
+            },
+            Brand: {
+              select: { id: true, name: true },
+            },
+            ProductImage: {
+              orderBy: { sortOrder: "asc" },
+            },
+            Inventory: true,
+          },
+        });
 
-    const updatedProduct =
-      await prisma.$transaction(
-        async (transaction) => {
+        /*
+         * UPDATE INVENTORY
+         */
+        if (existingProduct.Inventory) {
+          await transaction.inventory.update({
+            where: {
+              id: existingProduct.Inventory.id,
+            },
+            data: {
+              quantity: stockQuantity,
+              updatedAt: new Date(),
+            },
+          });
+        } else {
           /*
-           * UPDATE PRODUCT
+           * FIX: Inventory creation requires both id and updatedAt.
            */
+          const now = new Date();
 
-          const product =
-            await transaction.product.update({
+          await transaction.inventory.create({
+            data: {
+              id: randomUUID(),
+              productId: existingProduct.id,
+              quantity: stockQuantity,
+              reserved: 0,
+              updatedAt: now,
+            },
+          });
+        }
+
+        /*
+         * ENABLE / UPDATE FLASH SALE
+         */
+        if (
+          isFlashSale &&
+          parsedFlashSaleStart &&
+          parsedFlashSaleEnd &&
+          flashSalePrice !== null &&
+          flashSaleStockLimit !== null
+        ) {
+          const now = new Date();
+
+          const saleIsCurrentlyActive =
+            parsedFlashSaleStart <= now &&
+            parsedFlashSaleEnd > now;
+
+          if (existingFlashSaleProduct) {
+            await transaction.flashSale.update({
               where: {
-                id: existingProduct.id,
+                id: existingFlashSaleProduct.FlashSale.id,
               },
-
               data: {
-                name,
-
-                categoryId,
-
-                brandId,
-
-                description:
-                  description || null,
-
-                sku,
-
-                price,
-
-                compareAtPrice,
-
-                stockQuantity,
-
-                isFeatured,
-
-                isFlashSale,
-              },
-
-              include: {
-                Category: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-
-                Brand: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-
-                ProductImage: {
-                  orderBy: {
-                    sortOrder: "asc",
-                  },
-                },
-
-                Inventory: true,
+                name: `${name} Flash Sale`,
+                description: `Limited-time Flash Sale for ${name}`,
+                startsAt: parsedFlashSaleStart,
+                endsAt: parsedFlashSaleEnd,
+                isActive: saleIsCurrentlyActive,
+                updatedAt: new Date(),
               },
             });
 
-          /*
-           * UPDATE INVENTORY
-           */
-
-          if (existingProduct.Inventory) {
-            await transaction.inventory.update({
-              where: {
-                id:
-                  existingProduct
-                    .Inventory.id,
-              },
-
+            await transaction.flashSaleProduct.update({
+              where: { id: existingFlashSaleProduct.id },
               data: {
-                quantity:
-                  stockQuantity,
+                salePrice: flashSalePrice,
+                stockLimit: flashSaleStockLimit,
               },
             });
           } else {
-            await transaction.inventory.create({
+            const flashSale = await transaction.flashSale.create({
               data: {
-                productId:
-                  existingProduct.id,
-
-                quantity:
-                  stockQuantity,
-
-                reserved: 0,
-              },
-            });
-          }
-
-          /*
-           * ENABLE / UPDATE FLASH SALE
-           */
-
-          if (
-            isFlashSale &&
-            parsedFlashSaleStart &&
-            parsedFlashSaleEnd &&
-            flashSalePrice !== null &&
-            flashSaleStockLimit !== null
-          ) {
-            const now = new Date();
-
-            const saleIsCurrentlyActive =
-              parsedFlashSaleStart <= now &&
-              parsedFlashSaleEnd > now;
-
-            /*
-             * UPDATE EXISTING FLASH SALE
-             */
-
-            if (existingFlashSaleProduct) {
-              await transaction.flashSale.update({
-                where: {
-                  id:
-                    existingFlashSaleProduct
-                      .FlashSale.id,
-                },
-
-                data: {
-                  name:
-                    `${name} Flash Sale`,
-
-                  description:
-                    `Limited-time Flash Sale for ${name}`,
-
-                  startsAt:
-                    parsedFlashSaleStart,
-
-                  endsAt:
-                    parsedFlashSaleEnd,
-
-                  isActive:
-                    saleIsCurrentlyActive,
-
-                  updatedAt:
-                    new Date(),
-                },
-              });
-
-              /*
-               * IMPORTANT:
-               * FlashSaleProduct DOES NOT have updatedAt.
-               */
-              await transaction.flashSaleProduct.update({
-                where: {
-                  id:
-                    existingFlashSaleProduct.id,
-                },
-
-                data: {
-                  salePrice:
-                    flashSalePrice,
-
-                  stockLimit:
-                    flashSaleStockLimit,
-                },
-              });
-            } else {
-              /*
-               * CREATE NEW FLASH SALE
-               */
-
-              const flashSale =
-                await transaction.flashSale.create({
-                  data: {
-                    id:
-                      crypto.randomUUID(),
-
-                    name:
-                      `${name} Flash Sale`,
-
-                    description:
-                      `Limited-time Flash Sale for ${name}`,
-
-                    startsAt:
-                      parsedFlashSaleStart,
-
-                    endsAt:
-                      parsedFlashSaleEnd,
-
-                    isActive:
-                      saleIsCurrentlyActive,
-
-                    updatedAt:
-                      new Date(),
-                  },
-                });
-
-              /*
-               * FlashSaleProduct does NOT have updatedAt.
-               */
-              await transaction.flashSaleProduct.create({
-                data: {
-                  id:
-                    crypto.randomUUID(),
-
-                  flashSaleId:
-                    flashSale.id,
-
-                  productId:
-                    existingProduct.id,
-
-                  salePrice:
-                    flashSalePrice,
-
-                  stockLimit:
-                    flashSaleStockLimit,
-
-                  soldQuantity:
-                    0,
-                },
-              });
-            }
-          }
-
-          /*
-           * DISABLE FLASH SALE
-           */
-
-          if (
-            !isFlashSale &&
-            existingFlashSaleProduct
-          ) {
-            /*
-             * FlashSale itself HAS updatedAt.
-             */
-            await transaction.flashSale.update({
-              where: {
-                id:
-                  existingFlashSaleProduct
-                    .FlashSale.id,
-              },
-
-              data: {
-                isActive: false,
-
-                updatedAt:
-                  new Date(),
+                id: randomUUID(),
+                name: `${name} Flash Sale`,
+                description: `Limited-time Flash Sale for ${name}`,
+                startsAt: parsedFlashSaleStart,
+                endsAt: parsedFlashSaleEnd,
+                isActive: saleIsCurrentlyActive,
+                updatedAt: new Date(),
               },
             });
 
-            /*
-             * FlashSaleProduct does NOT have updatedAt.
-             *
-             * We don't need to update it.
-             */
+            await transaction.flashSaleProduct.create({
+              data: {
+                id: randomUUID(),
+                flashSaleId: flashSale.id,
+                productId: existingProduct.id,
+                salePrice: flashSalePrice,
+                stockLimit: flashSaleStockLimit,
+                soldQuantity: 0,
+              },
+            });
           }
-
-          return product;
         }
-      );
+
+        /*
+         * DISABLE FLASH SALE
+         */
+        if (!isFlashSale && existingFlashSaleProduct) {
+          await transaction.flashSale.update({
+            where: {
+              id: existingFlashSaleProduct.FlashSale.id,
+            },
+            data: {
+              isActive: false,
+              updatedAt: new Date(),
+            },
+          });
+        }
+
+        return product;
+      }
+    );
 
     /*
      * LOAD LATEST FLASH SALE
      */
-
     let flashSaleProduct = null;
 
     if (updatedProduct.isFlashSale) {
-      flashSaleProduct =
-        await prisma.flashSaleProduct.findFirst({
-          where: {
-            productId:
-              updatedProduct.id,
-          },
-
-          orderBy: {
-            FlashSale: {
-              startsAt: "desc",
-            },
-          },
-
-          include: {
-            FlashSale: true,
-          },
-        });
+      flashSaleProduct = await prisma.flashSaleProduct.findFirst({
+        where: { productId: updatedProduct.id },
+        orderBy: {
+          FlashSale: { startsAt: "desc" },
+        },
+        include: { FlashSale: true },
+      });
     }
-
-    /*
-     * RETURN UPDATED PRODUCT
-     */
 
     return NextResponse.json(
       {
         success: true,
-
-        message:
-          "Product updated successfully.",
-
+        message: "Product updated successfully.",
         product: {
-          id:
-            updatedProduct.id,
-
-          name:
-            updatedProduct.name,
-
-          slug:
-            updatedProduct.slug,
-
-          description:
-            updatedProduct.description,
-
-          sku:
-            updatedProduct.sku,
-
-          price:
-            Number(
-              updatedProduct.price
-            ),
-
+          id: updatedProduct.id,
+          name: updatedProduct.name,
+          slug: updatedProduct.slug,
+          description: updatedProduct.description,
+          sku: updatedProduct.sku,
+          price: Number(updatedProduct.price),
           compareAtPrice:
-            updatedProduct.compareAtPrice !==
-            null
-              ? Number(
-                  updatedProduct.compareAtPrice
-                )
+            updatedProduct.compareAtPrice !== null
+              ? Number(updatedProduct.compareAtPrice)
               : null,
-
-          stockQuantity:
-            updatedProduct.stockQuantity,
-
-          status:
-            updatedProduct.status,
-
-          isFeatured:
-            updatedProduct.isFeatured,
-
-          isFlashSale:
-            updatedProduct.isFlashSale,
-
-          category:
-            updatedProduct.Category,
-
-          brand:
-            updatedProduct.Brand,
-
-          images:
-            updatedProduct.ProductImage,
-
-          inventory:
-            updatedProduct.Inventory
-              ? {
-                  quantity:
-                    updatedProduct
-                      .Inventory.quantity,
-
-                  reserved:
-                    updatedProduct
-                      .Inventory.reserved,
-                }
-              : null,
-
-          flashSale:
-            flashSaleProduct
-              ? {
-                  id:
-                    flashSaleProduct.id,
-
-                  salePrice:
-                    Number(
-                      flashSaleProduct
-                        .salePrice
-                    ),
-
-                  stockLimit:
-                    flashSaleProduct
-                      .stockLimit,
-
-                  soldQuantity:
-                    flashSaleProduct
-                      .soldQuantity,
-
-                  flashSaleId:
-                    flashSaleProduct
-                      .FlashSale.id,
-
-                  name:
-                    flashSaleProduct
-                      .FlashSale.name,
-
-                  description:
-                    flashSaleProduct
-                      .FlashSale.description,
-
-                  startsAt:
-                    flashSaleProduct
-                      .FlashSale.startsAt,
-
-                  endsAt:
-                    flashSaleProduct
-                      .FlashSale.endsAt,
-
-                  isActive:
-                    flashSaleProduct
-                      .FlashSale.isActive,
-                }
-              : null,
+          stockQuantity: updatedProduct.stockQuantity,
+          status: updatedProduct.status,
+          isFeatured: updatedProduct.isFeatured,
+          isFlashSale: updatedProduct.isFlashSale,
+          category: updatedProduct.Category,
+          brand: updatedProduct.Brand,
+          images: updatedProduct.ProductImage,
+          inventory: updatedProduct.Inventory
+            ? {
+                quantity: updatedProduct.Inventory.quantity,
+                reserved: updatedProduct.Inventory.reserved,
+              }
+            : null,
+          flashSale: flashSaleProduct
+            ? {
+                id: flashSaleProduct.id,
+                salePrice: Number(flashSaleProduct.salePrice),
+                stockLimit: flashSaleProduct.stockLimit,
+                soldQuantity: flashSaleProduct.soldQuantity,
+                flashSaleId: flashSaleProduct.FlashSale.id,
+                name: flashSaleProduct.FlashSale.name,
+                description: flashSaleProduct.FlashSale.description,
+                startsAt: flashSaleProduct.FlashSale.startsAt,
+                endsAt: flashSaleProduct.FlashSale.endsAt,
+                isActive: flashSaleProduct.FlashSale.isActive,
+              }
+            : null,
         },
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error(
-      "SELLER PRODUCT UPDATE ERROR:",
-      error
-    );
+    console.error("SELLER PRODUCT UPDATE ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-
         message:
           error instanceof Error
             ? error.message
@@ -1330,15 +847,11 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const sessionUser =
-      await getSessionUser();
+    const sessionUser = await getSessionUser();
 
     if (!sessionUser) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Please login first.",
-        },
+        { success: false, message: "Please login first." },
         { status: 401 }
       );
     }
@@ -1347,33 +860,23 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Only sellers can upload product images.",
+          message: "Only sellers can upload product images.",
         },
         { status: 403 }
       );
     }
 
-    const seller =
-      await prisma.seller.findUnique({
-        where: {
-          userId:
-            sessionUser.userId,
-        },
-
-        select: {
-          id: true,
-          status: true,
-        },
-      });
+    const seller = await prisma.seller.findUnique({
+      where: { userId: sessionUser.userId },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
 
     if (!seller) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Seller account not found.",
-        },
+        { success: false, message: "Seller account not found." },
         { status: 404 }
       );
     }
@@ -1382,49 +885,33 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Your seller account is not approved.",
+          message: "Your seller account is not approved.",
         },
         { status: 403 }
       );
     }
 
-    const { id } =
-      await context.params;
+    const { id } = await context.params;
 
     if (!id) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Product ID is required.",
-        },
+        { success: false, message: "Product ID is required." },
         { status: 400 }
       );
     }
 
-    const product =
-      await prisma.product.findUnique({
-        where: {
-          id,
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: {
+        ProductImage: {
+          orderBy: { sortOrder: "asc" },
         },
-
-        include: {
-          ProductImage: {
-            orderBy: {
-              sortOrder: "asc",
-            },
-          },
-        },
-      });
+      },
+    });
 
     if (!product) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Product not found.",
-        },
+        { success: false, message: "Product not found." },
         { status: 404 }
       );
     }
@@ -1451,19 +938,12 @@ export async function POST(
       );
     }
 
-    const formData =
-      await request.formData();
-
-    const file =
-      formData.get("file");
+    const formData = await request.formData();
+    const file = formData.get("file");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Please select an image.",
-        },
+        { success: false, message: "Please select an image." },
         { status: 400 }
       );
     }
@@ -1479,63 +959,43 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Only JPG, PNG and WEBP images are allowed.",
+          message: "Only JPG, PNG and WEBP images are allowed.",
         },
         { status: 400 }
       );
     }
 
-    const maxSize =
-      5 * 1024 * 1024;
+    const maxSize = 5 * 1024 * 1024;
 
     if (file.size > maxSize) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Image must be smaller than 5MB.",
+          message: "Image must be smaller than 5MB.",
         },
         { status: 400 }
       );
     }
 
-    const supabase =
-      getSupabaseAdmin();
+    const supabase = getSupabaseAdmin();
 
     const extension =
       file.type === "image/png"
         ? "png"
         : file.type === "image/webp"
-        ? "webp"
-        : "jpg";
+          ? "webp"
+          : "jpg";
 
-    const fileName =
-      `${crypto.randomUUID()}.${extension}`;
+    const fileName = `${randomUUID()}.${extension}`;
+    const storagePath = `${product.id}/${fileName}`;
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
 
-    const storagePath =
-      `${product.id}/${fileName}`;
-
-    const fileBuffer =
-      Buffer.from(
-        await file.arrayBuffer()
-      );
-
-    const {
-      error: uploadError,
-    } =
-      await supabase.storage
-        .from("product-images")
-        .upload(
-          storagePath,
-          fileBuffer,
-          {
-            contentType:
-              file.type,
-
-            upsert: false,
-          }
-        );
+    const { error: uploadError } = await supabase.storage
+      .from("product-images")
+      .upload(storagePath, fileBuffer, {
+        contentType: file.type,
+        upsert: false,
+      });
 
     if (uploadError) {
       console.error(
@@ -1546,83 +1006,48 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Unable to upload image to storage.",
+          message: "Unable to upload image to storage.",
         },
         { status: 500 }
       );
     }
 
-    const {
-      data: publicUrlData,
-    } =
-      supabase.storage
-        .from("product-images")
-        .getPublicUrl(
-          storagePath
-        );
+    const { data: publicUrlData } = supabase.storage
+      .from("product-images")
+      .getPublicUrl(storagePath);
 
-    const imageUrl =
-      publicUrlData.publicUrl;
+    const imageUrl = publicUrlData.publicUrl;
+    const nextSortOrder = product.ProductImage.length;
 
-    const nextSortOrder =
-      product.ProductImage.length;
-
-    /*
-     * CREATE DATABASE IMAGE RECORD
-     */
-    const image =
-      await prisma.productImage.create({
-        data: {
-          id: crypto.randomUUID(),
-
-          productId:
-            product.id,
-
-          url:
-            imageUrl,
-
-          altText:
-            product.name,
-
-          sortOrder:
-            nextSortOrder,
-        },
-      });
+    const image = await prisma.productImage.create({
+      data: {
+        id: randomUUID(),
+        productId: product.id,
+        url: imageUrl,
+        altText: product.name,
+        sortOrder: nextSortOrder,
+      },
+    });
 
     return NextResponse.json(
       {
         success: true,
-
-        message:
-          "Product image uploaded successfully.",
-
+        message: "Product image uploaded successfully.",
         image: {
-          id:
-            image.id,
-
-          url:
-            image.url,
-
-          altText:
-            image.altText,
-
-          sortOrder:
-            image.sortOrder,
+          id: image.id,
+          url: image.url,
+          altText: image.altText,
+          sortOrder: image.sortOrder,
         },
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error(
-      "SELLER PRODUCT IMAGE UPLOAD ERROR:",
-      error
-    );
+    console.error("SELLER PRODUCT IMAGE UPLOAD ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-
         message:
           error instanceof Error
             ? error.message
@@ -1641,16 +1066,11 @@ export async function DELETE(
   context: RouteContext
 ) {
   try {
-    const sessionUser =
-      await getSessionUser();
+    const sessionUser = await getSessionUser();
 
     if (!sessionUser) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Please login first.",
-        },
+        { success: false, message: "Please login first." },
         { status: 401 }
       );
     }
@@ -1659,33 +1079,23 @@ export async function DELETE(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Only sellers can delete product images.",
+          message: "Only sellers can delete product images.",
         },
         { status: 403 }
       );
     }
 
-    const seller =
-      await prisma.seller.findUnique({
-        where: {
-          userId:
-            sessionUser.userId,
-        },
-
-        select: {
-          id: true,
-          status: true,
-        },
-      });
+    const seller = await prisma.seller.findUnique({
+      where: { userId: sessionUser.userId },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
 
     if (!seller) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Seller account not found.",
-        },
+        { success: false, message: "Seller account not found." },
         { status: 404 }
       );
     }
@@ -1694,63 +1104,42 @@ export async function DELETE(
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Your seller account is not approved.",
+          message: "Your seller account is not approved.",
         },
         { status: 403 }
       );
     }
 
-    const { id } =
-      await context.params;
+    const { id } = await context.params;
 
     if (!id) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Product ID is required.",
-        },
+        { success: false, message: "Product ID is required." },
         { status: 400 }
       );
     }
 
-    const { searchParams } =
-      new URL(request.url);
-
-    const imageId =
-      searchParams.get("imageId");
+    const { searchParams } = new URL(request.url);
+    const imageId = searchParams.get("imageId");
 
     if (!imageId) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Image ID is required.",
-        },
+        { success: false, message: "Image ID is required." },
         { status: 400 }
       );
     }
 
-    const product =
-      await prisma.product.findUnique({
-        where: {
-          id,
-        },
-
-        select: {
-          id: true,
-          sellerId: true,
-        },
-      });
+    const product = await prisma.product.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        sellerId: true,
+      },
+    });
 
     if (!product) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Product not found.",
-        },
+        { success: false, message: "Product not found." },
         { status: 404 }
       );
     }
@@ -1766,22 +1155,16 @@ export async function DELETE(
       );
     }
 
-    const image =
-      await prisma.productImage.findFirst({
-        where: {
-          id: imageId,
-          productId:
-            product.id,
-        },
-      });
+    const image = await prisma.productImage.findFirst({
+      where: {
+        id: imageId,
+        productId: product.id,
+      },
+    });
 
     if (!image) {
       return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Product image not found.",
-        },
+        { success: false, message: "Product image not found." },
         { status: 404 }
       );
     }
@@ -1790,33 +1173,22 @@ export async function DELETE(
      * DELETE FROM SUPABASE STORAGE
      */
     try {
-      const supabase =
-        getSupabaseAdmin();
+      const supabase = getSupabaseAdmin();
 
       const marker =
         "/storage/v1/object/public/product-images/";
 
-      const markerIndex =
-        image.url.indexOf(marker);
+      const markerIndex = image.url.indexOf(marker);
 
       if (markerIndex !== -1) {
-        const storagePath =
-          decodeURIComponent(
-            image.url.slice(
-              markerIndex +
-                marker.length
-            )
-          );
+        const storagePath = decodeURIComponent(
+          image.url.slice(markerIndex + marker.length)
+        );
 
         if (storagePath) {
-          const {
-            error: storageError,
-          } =
-            await supabase.storage
-              .from("product-images")
-              .remove([
-                storagePath,
-              ]);
+          const { error: storageError } = await supabase.storage
+            .from("product-images")
+            .remove([storagePath]);
 
           if (storageError) {
             console.error(
@@ -1837,44 +1209,25 @@ export async function DELETE(
      * DELETE DATABASE IMAGE RECORD
      */
     await prisma.productImage.delete({
-      where: {
-        id: image.id,
-      },
+      where: { id: image.id },
     });
 
     /*
      * REORDER REMAINING IMAGES
      */
-    const remainingImages =
-      await prisma.productImage.findMany({
-        where: {
-          productId:
-            product.id,
-        },
+    const remainingImages = await prisma.productImage.findMany({
+      where: { productId: product.id },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true },
+    });
 
-        orderBy: {
-          sortOrder: "asc",
-        },
-
-        select: {
-          id: true,
-        },
-      });
-
-    for (
-      let index = 0;
-      index < remainingImages.length;
-      index++
-    ) {
+    for (let index = 0; index < remainingImages.length; index++) {
       await prisma.productImage.update({
         where: {
-          id:
-            remainingImages[index].id,
+          id: remainingImages[index].id,
         },
-
         data: {
-          sortOrder:
-            index,
+          sortOrder: index,
         },
       });
     }
@@ -1882,22 +1235,16 @@ export async function DELETE(
     return NextResponse.json(
       {
         success: true,
-
-        message:
-          "Product image deleted successfully.",
+        message: "Product image deleted successfully.",
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error(
-      "DELETE PRODUCT IMAGE ERROR:",
-      error
-    );
+    console.error("DELETE PRODUCT IMAGE ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-
         message:
           error instanceof Error
             ? error.message

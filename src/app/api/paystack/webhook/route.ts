@@ -1,5 +1,6 @@
+
 import { NextResponse } from "next/server";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
@@ -16,12 +17,11 @@ export async function POST(request: Request) {
     }
 
     const body = await request.text();
-
     const signature = request.headers.get("x-paystack-signature");
 
-    if (!signature) {
+    if (!signature || !/^[a-f0-9]{128}$/i.test(signature)) {
       return NextResponse.json(
-        { success: false, message: "Missing Paystack signature." },
+        { success: false, message: "Missing or invalid Paystack signature." },
         { status: 401 }
       );
     }
@@ -32,8 +32,8 @@ export async function POST(request: Request) {
       .digest("hex");
 
     const signaturesMatch = crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
+      Buffer.from(signature, "hex"),
+      Buffer.from(expectedSignature, "hex")
     );
 
     if (!signaturesMatch) {
@@ -43,7 +43,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const event = JSON.parse(body);
+    let event: {
+      event?: string;
+      data?: {
+        reference?: string;
+        amount?: number | string;
+        status?: string;
+      };
+    };
+
+    try {
+      event = JSON.parse(body);
+    } catch {
+      return NextResponse.json(
+        { success: false, message: "Invalid webhook payload." },
+        { status: 400 }
+      );
+    }
 
     console.log("PAYSTACK WEBHOOK EVENT:", event.event);
 
@@ -55,7 +71,6 @@ export async function POST(request: Request) {
     }
 
     const transaction = event.data;
-
     const reference = transaction?.reference;
 
     if (!reference) {
@@ -65,20 +80,22 @@ export async function POST(request: Request) {
       );
     }
 
+    if (transaction?.status !== "success") {
+      return NextResponse.json(
+        { success: false, message: "Transaction was not successful." },
+        { status: 400 }
+      );
+    }
+
     const payment = await prisma.payment.findUnique({
-      where: {
-        reference,
-      },
+      where: { reference },
       include: {
-        order: true,
+        Order: true,
       },
     });
 
     if (!payment) {
-      console.error(
-        "PAYSTACK WEBHOOK: Payment not found:",
-        reference
-      );
+      console.error("PAYSTACK WEBHOOK: Payment not found:", reference);
 
       return NextResponse.json(
         { success: false, message: "Payment not found." },
@@ -86,13 +103,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const expectedAmount = Math.round(
-      Number(payment.amount) * 100
-    );
-
+    const expectedAmount = Math.round(Number(payment.amount) * 100);
     const paidAmount = Number(transaction.amount);
 
-    if (paidAmount !== expectedAmount) {
+    if (
+      !Number.isFinite(expectedAmount) ||
+      !Number.isFinite(paidAmount) ||
+      paidAmount !== expectedAmount
+    ) {
       console.error("PAYSTACK WEBHOOK: Amount mismatch:", {
         reference,
         expectedAmount,
@@ -114,30 +132,24 @@ export async function POST(request: Request) {
 
     await prisma.$transaction([
       prisma.payment.update({
-        where: {
-          id: payment.id,
-        },
+        where: { id: payment.id },
         data: {
           status: "PAID",
           paidAt: new Date(),
-          reference: transaction.reference,
+          updatedAt: new Date(),
         },
       }),
 
       prisma.order.update({
-        where: {
-          id: payment.orderId,
-        },
+        where: { id: payment.orderId },
         data: {
           status: "CONFIRMED",
+          updatedAt: new Date(),
         },
       }),
     ]);
 
-    console.log(
-      "PAYSTACK WEBHOOK: Payment confirmed:",
-      reference
-    );
+    console.log("PAYSTACK WEBHOOK: Payment confirmed:", reference);
 
     return NextResponse.json({
       success: true,
