@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export default async function CategoriesPage() {
   const categories = await prisma.category.findMany({
     orderBy: {
@@ -10,7 +12,6 @@ export default async function CategoriesPage() {
 
   return (
     <main className="min-h-screen bg-gray-50">
-      {/* Header */}
       <section className="bg-[#f68b1e] px-4 py-12 text-white sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <Link
@@ -30,7 +31,6 @@ export default async function CategoriesPage() {
         </div>
       </section>
 
-      {/* Categories */}
       <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         {categories.length === 0 ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
@@ -39,8 +39,7 @@ export default async function CategoriesPage() {
             </h2>
 
             <p className="mt-2 text-sm text-gray-500">
-              Categories will appear here once they have been added to the
-              marketplace.
+              Categories will appear here once they have been added to the marketplace.
             </p>
           </div>
         ) : (
